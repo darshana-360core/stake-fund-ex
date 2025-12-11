@@ -805,6 +805,7 @@ class loginController extends Controller
             $res['delhi-event']           = $exist ? 1 : 0;
             $fetchDiscountJson = file_get_contents("http://91.243.178.37:3255/api/24h");
 
+            
             $fetchDiscount = json_decode($fetchDiscountJson, true);
 
             if($fetchDiscount['data']['priceChange24hPercent'] < 0)
