@@ -1,7 +1,7 @@
 <?php
 $host = '127.0.0.1';
 $user = 'root';
-$password = 'Truepoints@@987$$';
+$password = 'JdNW3a4m6P6BUGoa';
 $dbname = 'stakefundx';
 
 error_reporting(E_ALL);
