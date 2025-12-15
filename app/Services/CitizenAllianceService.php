@@ -326,6 +326,7 @@ class CitizenAllianceService
                 {
                     $legamount = 5000/2;
                     $legbusiness = $this->getTeamBusiness($userId);
+
                     if(($legbusiness['strong'] >= $legamount) && ($legbusiness['weak'] >= $legamount)){
                         $achievedLevel = 1;
                     }
@@ -393,46 +394,44 @@ class CitizenAllianceService
     {
         $doraPrice = rtxPrice();
 
-        $otherLegs = usersModel::selectRaw("IFNULL((my_business),0) as my_business, users.id")
-            ->leftJoin('user_plans', 'user_plans.user_id', '=', 'users.id')
-            ->where('users.sponser_id', $userId)
-            ->groupBy('users.id')
-            ->get()
-            ->toArray();
+       $result = usersModel::selectRaw('
+            users.id,
+            IFNULL(SUM(user_plans.amount), 0) as personal_stake,
+            IFNULL(SUM(users.my_business), 0) as my_business,
+            IFNULL(SUM(user_plans.amount), 0) + IFNULL(SUM(users.my_business), 0) as total
+        ')
+        ->leftJoin('user_plans', 'user_plans.user_id', '=', 'users.id')
+        ->whereRaw("user_plans.roi > 0")
+        ->where('users.sponser_id', $userId)
+        ->groupBy('users.id')
+        ->get();
+
+
+        $otherLegs = $result->toArray();
 
         $strongBusiness = 0;
         $weakBusiness = 0;
-
         if (!empty($otherLegs)) {
-            // sort descending by leg business
-            usort($otherLegs, fn($a, $b) => $b['my_business'] <=> $a['my_business']);
-
             foreach ($otherLegs as $index => $leg) {
-                $userPlansAmount = userPlansModel::where('user_id', $leg['id'])
-                    ->whereRaw("roi > 0")
-                    ->sum('amount');
 
                 $claimedRewards = withdrawModel::where('user_id', $leg['id'])
                     ->where('withdraw_type', 'UNSTAKE')
                     ->sum('amount');
 
-                $legBusiness = ($leg['my_business'] + $userPlansAmount - $claimedRewards) * $doraPrice;
-                
-                if ($legBusiness < 0) $legBusiness = 0;
-
-                if ($index === 0) {
-                    $strongBusiness = $legBusiness;
-                } 
-                else 
-                {
-                    $weakBusiness += $legBusiness;
-                }
+                $otherLegs[$index]['total'] =
+                    ($leg['total'] - $claimedRewards) * $doraPrice;
+            }
+            usort($otherLegs, fn($a, $b) => $b['total'] <=> $a['total']);
+            $strongBusiness = $otherLegs[0]['total'];
+            for ($i = 1; $i < count($otherLegs); $i++) {
+                $weakBusiness += $otherLegs[$i]['total'];
             }
         }
 
         echo $userId." Strong=".$strongBusiness." Weak=".$weakBusiness.PHP_EOL;
         return ['strong' => $strongBusiness, 'weak' => $weakBusiness];
     }
+    
 
     /**
      * Count valid direct referrals (>= $100)

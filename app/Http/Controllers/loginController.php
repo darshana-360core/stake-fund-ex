@@ -390,7 +390,9 @@ class loginController extends Controller
 
                 // Two legs calculation
                 $get2Legs = DB::select("SELECT (my_business + strong_business) as my_business_achieve, users.id, users.strong_business, users.refferal_code FROM users left join user_plans on users.id = user_plans.user_id where sponser_id = " . $user_id . " group by users.id order by cast(my_business_achieve as unsigned) DESC");
+
                 $get2Legs = array_map(function ($v) { return (array) $v; }, $get2Legs);
+               
 
                 foreach ($get2Legs as $k2 => $v2) {
                     $userPlansAmount = userPlansModel::selectRaw("IFNULL(SUM(amount),0) as amount")
@@ -403,11 +405,13 @@ class loginController extends Controller
                         ->where('withdraw_type', '=', "UNSTAKE")
                         ->get()->toArray();
 
+                    $v2['userPlansAmount'] = $userPlansAmount;
                     $get2Legs[$k2]['my_business_achieve'] =
                         (($v2['my_business_achieve'] + $userPlansAmount[0]['amount']) - $claimedRewards[0]['amount']) < 0
                         ? 0
                         : (($v2['my_business_achieve'] + $userPlansAmount[0]['amount']) - $claimedRewards[0]['amount']);
                 }
+                
 
                 usort($get2Legs, function ($a, $b) {
                     return ($b["my_business_achieve"] <=> $a["my_business_achieve"]);
