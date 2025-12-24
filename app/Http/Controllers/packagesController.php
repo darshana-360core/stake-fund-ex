@@ -1976,6 +1976,7 @@ class packagesController extends Controller
         $document = userDocumentsModel::where('user_id',$user_id)->first();
         $documentSubimeted = false;
         if($document) $documentSubimeted = true;
+        
         $days360Plan = userPlansModel::where(["user_id"=> $user_id, "lock_period"=> 4]) 
                                     ->whereIn('package_id',[2,3])
                                     ->whereDate('created_on', '>=', '2025-12-16')

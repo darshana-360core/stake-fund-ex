@@ -394,43 +394,90 @@ class CitizenAllianceService
     {
         $doraPrice = rtxPrice();
 
-       $result = usersModel::selectRaw('
-            users.id,
-            IFNULL(SUM(user_plans.amount), 0) as personal_stake,
-            IFNULL(SUM(users.my_business), 0) as my_business,
-            IFNULL(SUM(user_plans.amount), 0) + IFNULL(SUM(users.my_business), 0) as total
-        ')
-        ->leftJoin('user_plans', 'user_plans.user_id', '=', 'users.id')
-        ->whereRaw("user_plans.roi > 0")
-        ->where('users.sponser_id', $userId)
-        ->groupBy('users.id')
-        ->get();
+        $get2Legs = DB::select("SELECT (my_business + strong_business) as my_business_achieve, users.id, users.strong_business, users.refferal_code FROM users left join user_plans on users.id = user_plans.user_id where sponser_id = " . $userId . " group by users.id order by cast(my_business_achieve as unsigned) DESC");
 
+                $get2Legs = array_map(function ($v) { return (array) $v; }, $get2Legs);
+               
 
-        $otherLegs = $result->toArray();
+                foreach ($get2Legs as $k2 => $v2) {
+                    $userPlansAmount = userPlansModel::selectRaw("IFNULL(SUM(amount),0) as amount")
+                        ->where(['user_id' => $v2['id']])
+                        ->whereRaw("roi > 0 and isSynced != 2")
+                        ->get()->toArray();
 
-        $strongBusiness = 0;
-        $weakBusiness = 0;
-        if (!empty($otherLegs)) {
-            foreach ($otherLegs as $index => $leg) {
+                    $claimedRewards = withdrawModel::selectRaw("IFNULL(SUM(amount), 0) as amount")
+                        ->where('user_id', '=', $v2['id'])
+                        ->where('withdraw_type', '=', "UNSTAKE")
+                        ->get()->toArray();
 
-                $claimedRewards = withdrawModel::where('user_id', $leg['id'])
-                    ->where('withdraw_type', 'UNSTAKE')
-                    ->sum('amount');
+                    $v2['userPlansAmount'] = $userPlansAmount;
+                    $get2Legs[$k2]['my_business_achieve'] =
+                        (($v2['my_business_achieve'] + $userPlansAmount[0]['amount']) - $claimedRewards[0]['amount']) < 0
+                        ? 0
+                        : (($v2['my_business_achieve'] + $userPlansAmount[0]['amount']) - $claimedRewards[0]['amount']);
+                }
+                
 
-                $otherLegs[$index]['total'] =
-                    ($leg['total'] - $claimedRewards) * $doraPrice;
-            }
-            usort($otherLegs, fn($a, $b) => $b['total'] <=> $a['total']);
-            $strongBusiness = $otherLegs[0]['total'];
-            for ($i = 1; $i < count($otherLegs); $i++) {
-                $weakBusiness += $otherLegs[$i]['total'];
-            }
-        }
+                usort($get2Legs, function ($a, $b) {
+                    return ($b["my_business_achieve"] <=> $a["my_business_achieve"]);
+                });
 
-        echo $userId." Strong=".$strongBusiness." Weak=".$weakBusiness.PHP_EOL;
-        return ['strong' => $strongBusiness, 'weak' => $weakBusiness];
+                $firstLeg = 0;
+                $otherLeg = 0;
+                foreach ($get2Legs as $k2 => $v2) {
+                    if ($k2 == 0) {
+                        $firstLeg += $v2['my_business_achieve'];
+                    } else {
+                        $otherLeg += $v2['my_business_achieve'];
+                    }
+                }
+                    echo $userId." Strong=".($firstLeg * $doraPrice)." Weak=".($otherLeg  * $doraPrice).PHP_EOL;
+                return ['strong' => ($firstLeg  * $doraPrice), 'weak' => ($otherLeg  * $doraPrice)];
     }
+
+
+    // public function getTeamBusiness($userId)
+    // {
+    //     $doraPrice = rtxPrice();
+    //     echo $doraPrice;
+    //    $result = usersModel::selectRaw('
+    //         users.id,
+    //         IFNULL(SUM(user_plans.amount), 0) as personal_stake,
+    //         IFNULL(SUM(users.my_business), 0) as my_business,
+    //         IFNULL(SUM(user_plans.amount), 0) + IFNULL(SUM(users.my_business), 0) as total
+    //     ')
+    //     ->leftJoin('user_plans', 'user_plans.user_id', '=', 'users.id')
+    //     ->whereRaw("user_plans.roi > 0")
+    //     ->where('users.sponser_id', $userId)
+    //     ->groupBy('users.id')
+    //     ->get();
+
+
+    //     $otherLegs = $result->toArray();
+
+    //     dd($otherLegs);
+    //     $strongBusiness = 0;
+    //     $weakBusiness = 0;
+    //     if (!empty($otherLegs)) {
+    //         foreach ($otherLegs as $index => $leg) {
+
+    //             $claimedRewards = withdrawModel::where('user_id', $leg['id'])
+    //                 ->where('withdraw_type', 'UNSTAKE')
+    //                 ->sum('amount');
+
+    //             $otherLegs[$index]['total'] =
+    //                 ($leg['total'] - $claimedRewards) * $doraPrice;
+    //         }
+    //         usort($otherLegs, fn($a, $b) => $b['total'] <=> $a['total']);
+    //         $strongBusiness = $otherLegs[0]['total'];
+    //         for ($i = 1; $i < count($otherLegs); $i++) {
+    //             $weakBusiness += $otherLegs[$i]['total'];
+    //         }
+    //     }
+
+    //     echo $userId." Strong=".$strongBusiness." Weak=".$weakBusiness.PHP_EOL;
+    //     return ['strong' => $strongBusiness, 'weak' => $weakBusiness];
+    // }
     
 
     /**
