@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Mail;
 
 use App\Models\adminModel;
+use App\Models\userDocumentsModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
@@ -109,6 +110,97 @@ class loginController extends Controller
                 $res['message'] = "Dashboard information loaded successfully";
 
                 return is_mobile($type, "index", $res, "view");
+        }
+        // public function workshop_archiver(Request $request){
+
+        //         $data = userDocumentsModel::get();
+        //         $type = $request->input('type');
+        //         $res['status_code'] = 1;
+        //         $res['message'] = "Success";
+        //         $res['data'] = $data;
+        //         return is_mobile($type, "workshop_winner", $res, "view");
+        // }
+        public function workshop_archiver(Request $request)
+        {
+                $type = $request->input('type');
+                $search = $request->input('search');
+                $start_date = $request->input('start_date');
+                $end_date = $request->input('end_date');
+                $isExport = $request->input('export') === 'yes';
+                $whereStartDate = '';
+                $whereEndDate = '';
+               
+
+                if ($start_date != '') {
+                $whereStartDate = " AND date_format(users.created_on, '%Y-%m-%d') >= '" . date('Y-m-d', strtotime($start_date)) . "'";
+                }
+
+                if ($end_date != '') {
+                $whereEndDate = " AND date_format(users.created_on, '%Y-%m-%d') <= '" . date('Y-m-d', strtotime($end_date)) . "'";
+                }
+
+                $whereRawSearch = '';
+
+                if ($search != '') {
+                $whereRawSearch = " AND (refferal_code = '" . $search . "' or wallet_address like '" . $search . "' or name like '%" . $search . "%' or email like '%" . $search . "%') ";
+                }
+              
+                $data = userDocumentsModel::selectRaw("users.wallet_address,user_documents.*")->leftjoin('users', 'users.id', '=', 'user_documents.id')->whereRaw(" 1 = 1 " . $whereRawSearch . $whereStartDate . $whereEndDate)->groupBy('users.id')->paginate(20)->toArray();
+
+                $data = array_map(function ($value) {
+                return (array) $value;
+                }, $data);
+
+                
+                if ($isExport) {
+                        $data = userDocumentsModel::selectRaw("users.wallet_address,user_documents.*")->leftjoin('users', 'users.id', '=', 'user_documents.id')->whereRaw(" 1 = 1 " . $whereRawSearch . $whereStartDate . $whereEndDate)->groupBy('users.id')->get()->toArray();
+
+                        $data = array_map(function ($value) {
+                                return (array) $value;
+                        }, $data);
+
+
+                        $list = [
+                                ['Wallet Address','Member Code','Sponsor Code', 'Total Stake', 'Total Unstake', 'Total Income']
+                        ];
+                        // $filePath = storage_path('app/user.csv');
+
+                        $filePath = '/var/www/stakefundxhtml/exports/user.csv';
+                        $fp = fopen($filePath, 'w');
+                        foreach ($list as $fields) {
+                                fputcsv($fp, $fields);
+                        }
+                        foreach ($data as $key=>$value) {
+                                $unstake= withdrawModel::where('withdraw_type','UNSTAKE')->where('user_id',$value['id'])->sum('amount');
+                                $pkg_stake = userPlansModel::where('user_id', $value['id'])->sum('amount');
+                                $dailyPoolWinners = earningLogsModel::where('tag', 'REWARD-BONUS')->where('user_id', '=', $value['id'])->sum('amount');
+                                $monthlyPoolWinners = earningLogsModel::where('tag', 'DIFF-TEAM-BONUS')->where('user_id', '=', $value['id'])->sum('amount');
+
+                                $totalIncome = $value['total_income'] + $dailyPoolWinners + $monthlyPoolWinners;
+
+                                $dataRows = [
+                                $value['wallet_address'],
+                                $value['refferal_code'],
+                                $value['sponser_code'],
+                                $pkg_stake,
+                                $unstake,
+                                $totalIncome,
+                                ];
+                                fputcsv($fp, $dataRows);
+                        }
+
+                        fclose($fp);
+                        return response()->download($filePath)->deleteFileAfterSend(true);
+                }
+
+                $res['status_code'] = 1;
+                $res['message'] = "Success";
+                $res['data'] = $data;
+                $res['start_date'] = $start_date;
+                $res['end_date'] = $end_date;
+                $res['search'] = $search;
+
+                return is_mobile($type, "workshop_winner", $res, 'view');
         }
 
         public function incomeOverviewFilter(Request $request)

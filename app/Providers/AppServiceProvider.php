@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        \Illuminate\Support\Facades\URL::forceScheme('https');
+        // \Illuminate\Support\Facades\URL::forceScheme('https');
         
         View::composer('*', function ($view) {
             if (session()->has('user_id')) {
